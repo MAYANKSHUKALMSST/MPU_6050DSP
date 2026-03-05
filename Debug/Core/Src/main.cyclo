@@ -1,0 +1,9 @@
+../Core/Src/main.c:40:6:ota_confirm	1
+../Core/Src/main.c:58:5:main	1
+../Core/Src/main.c:125:6:SystemClock_Config	4
+../Core/Src/main.c:165:13:MX_GPIO_Init	1
+../Core/Src/main.c:185:13:MX_USART3_UART_Init	2
+../Core/Src/main.c:204:13:MX_I2C1_Init	3
+../Core/Src/main.c:229:13:MX_USB_OTG_FS_PCD_Init	2
+../Core/Src/main.c:247:6:HAL_TIM_PeriodElapsedCallback	2
+../Core/Src/main.c:259:6:Error_Handler	1

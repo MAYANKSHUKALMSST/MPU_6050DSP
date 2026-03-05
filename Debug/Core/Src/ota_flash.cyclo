@@ -1,0 +1,2 @@
+../Core/Src/ota_flash.c:8:6:ota_flash_erase	1
+../Core/Src/ota_flash.c:29:6:ota_flash_write	2

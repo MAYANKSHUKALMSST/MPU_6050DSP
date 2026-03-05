@@ -1,0 +1,2 @@
+../Core/Src/ota_flash.c:8:6:ota_flash_erase	40	static
+../Core/Src/ota_flash.c:29:6:ota_flash_write	40	static

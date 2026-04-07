@@ -1,0 +1,7 @@
+../Core/Src/network_interface.c:18:12:wait_for_response.constprop	40	static
+../Core/Src/network_interface.c:45:5:network_connect	8	static
+../Core/Src/network_interface.c:54:5:network_tcp_start	72	static
+../Core/Src/network_interface.c:68:5:network_tcp_stop	24	static
+../Core/Src/network_interface.c:78:5:network_send	8	static
+../Core/Src/network_interface.c:87:5:network_read_timeout	8	static
+../Core/Src/network_interface.c:83:5:network_read	0	static

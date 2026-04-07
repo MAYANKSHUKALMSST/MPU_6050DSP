@@ -1,0 +1,2 @@
+../Core/Src/ota/ota_agent.c:129:6:ota_agent_run	11
+../Core/Src/ota/ota_agent.c:170:6:ota_confirm	3

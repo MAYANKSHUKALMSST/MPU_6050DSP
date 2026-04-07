@@ -1,0 +1,4 @@
+../Core/Src/ota/flash_manager.c:27:17:addr_to_sector	0	static
+../Core/Src/ota/flash_manager.c:48:5:flash_erase	32	static
+../Core/Src/ota/flash_manager.c:83:6:flash_write	32	static
+../Core/Src/ota/flash_manager.c:127:6:flash_read	4	static

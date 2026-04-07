@@ -1,0 +1,4 @@
+../Core/Src/ota/flash_manager.c:27:17:addr_to_sector	8
+../Core/Src/ota/flash_manager.c:48:5:flash_erase	4
+../Core/Src/ota/flash_manager.c:83:6:flash_write	5
+../Core/Src/ota/flash_manager.c:127:6:flash_read	3

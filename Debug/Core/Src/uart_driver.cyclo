@@ -1,0 +1,2 @@
+../Core/Src/uart_driver.c:11:6:uart_send	1
+../Core/Src/uart_driver.c:23:5:uart_receive	1

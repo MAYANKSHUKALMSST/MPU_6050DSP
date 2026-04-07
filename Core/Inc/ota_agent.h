@@ -4,5 +4,5 @@
 #include <stdint.h>
 
 void ota_mark_update(uint32_t size);
-
+void ota_agent_task(void);
 #endif

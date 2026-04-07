@@ -3,8 +3,13 @@
 
 #include "stm32f7xx_hal.h"
 
-#define MPU6050_I2C_ADDR          (0x68 << 1)
-#define MPU6050_I2C_TIMEOUT       100
+/* I2C address — runtime variable so we can auto-detect AD0 pin state.
+ * Default 0xD0 (AD0 LOW).  Set to 0xD2 if your module has AD0 HIGH.  */
+extern uint16_t mpu6050_i2c_addr;
+#define MPU6050_I2C_ADDR    mpu6050_i2c_addr
+#define MPU6050_ADDR_AD0_LOW   ((uint16_t)(0x68 << 1))   /* 0xD0 */
+#define MPU6050_ADDR_AD0_HIGH  ((uint16_t)(0x69 << 1))   /* 0xD2 */
+#define MPU6050_I2C_TIMEOUT    100
 
 #define MPU6050_REG_SMPLRT_DIV    0x19
 #define MPU6050_REG_CONFIG        0x1A

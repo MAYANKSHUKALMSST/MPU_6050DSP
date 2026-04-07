@@ -1,5 +1,10 @@
 #include "mpu6050.h"
 
+/* Runtime I2C address — defaults to AD0 LOW (0xD0).
+ * StartSensorTask probes both addresses and sets this before calling
+ * MPU6050_Init, so the driver always uses the correct address.          */
+uint16_t mpu6050_i2c_addr = MPU6050_ADDR_AD0_LOW;
+
 /* ───────────────────────────────────────────────────────────────────────── */
 /*                      LOW LEVEL INTERNAL FUNCTIONS                         */
 /* ───────────────────────────────────────────────────────────────────────── */
@@ -58,12 +63,12 @@ HAL_StatusTypeDef MPU6050_Init(I2C_HandleTypeDef *hi2c)
     if (s != HAL_OK) return s;
     HAL_Delay(100);
 
-    /* Sample rate: 125 Hz */
-    s = mpu_write(hi2c, MPU6050_REG_SMPLRT_DIV, 0x07);
+    /* Sample rate: 500 Hz  (Gyro output rate 1 kHz, SMPLRT_DIV=1 → 1000/2) */
+    s = mpu_write(hi2c, MPU6050_REG_SMPLRT_DIV, 0x01);
     if (s != HAL_OK) return s;
 
-    /* DLPF: 94 Hz */
-    s = mpu_write(hi2c, MPU6050_REG_CONFIG, 0x02);
+    /* DLPF: 184 Hz bandwidth — anti-aliasing for 500 Hz sampling (Nyquist 250 Hz) */
+    s = mpu_write(hi2c, MPU6050_REG_CONFIG, 0x01);
     if (s != HAL_OK) return s;
 
     /* Gyro ±250 dps */

@@ -1,2 +1,1 @@
-../Core/Src/boot_manager.c:14:6:jump_to_application	32	static,ignoring_inline_asm
-../Core/Src/boot_manager.c:41:6:boot_manager_run	24	static
+../Core/Src/boot_manager.c:33:6:jump_to_application	16	static,ignoring_inline_asm

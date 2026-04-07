@@ -33,7 +33,7 @@ Core/Src/boot_manager.o: ../Core/Src/boot_manager.c \
  ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_usb.h \
  ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_hal_pcd_ex.h \
  ../Core/Inc/boot_manager.h ../Core/Inc/flash_layout.h \
- ../Core/Inc/ota_metadata.h ../Core/Inc/secure_boot.h \
+ ../Core/Inc/ota_metadata.h ../Core/Inc/ota/ota_metadata.h \
  ../Core/Inc/boot_log.h
 ../Drivers/CMSIS/Device/ST/STM32F7xx/Include/stm32f7xx.h:
 ../Drivers/CMSIS/Device/ST/STM32F7xx/Include/stm32f722xx.h:
@@ -71,5 +71,5 @@ Core/Src/boot_manager.o: ../Core/Src/boot_manager.c \
 ../Core/Inc/boot_manager.h:
 ../Core/Inc/flash_layout.h:
 ../Core/Inc/ota_metadata.h:
-../Core/Inc/secure_boot.h:
+../Core/Inc/ota/ota_metadata.h:
 ../Core/Inc/boot_log.h:

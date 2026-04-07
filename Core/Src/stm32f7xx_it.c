@@ -20,8 +20,11 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "stm32f7xx_it.h"
+
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <stdio.h>
+#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -56,6 +59,7 @@
 
 /* External variables --------------------------------------------------------*/
 extern TIM_HandleTypeDef htim6;
+extern UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN EV */
 
@@ -64,6 +68,7 @@ extern TIM_HandleTypeDef htim6;
 /******************************************************************************/
 /*           Cortex-M7 Processor Interruption and Exception Handlers          */
 /******************************************************************************/
+
 /**
   * @brief This function handles Non maskable interrupt.
   */
@@ -73,7 +78,7 @@ void NMI_Handler(void)
 
   /* USER CODE END NonMaskableInt_IRQn 0 */
   /* USER CODE BEGIN NonMaskableInt_IRQn 1 */
-   while (1)
+  while (1)
   {
   }
   /* USER CODE END NonMaskableInt_IRQn 1 */
@@ -81,18 +86,11 @@ void NMI_Handler(void)
 
 /**
   * @brief This function handles Hard fault interrupt.
+  *        Transmits a debug message over USART2 before halting,
+  *        so the fault is visible on the serial terminal.
   */
-void HardFault_Handler(void)
-{
-  /* USER CODE BEGIN HardFault_IRQn 0 */
-
-  /* USER CODE END HardFault_IRQn 0 */
-  while (1)
-  {
-    /* USER CODE BEGIN W1_HardFault_IRQn 0 */
-    /* USER CODE END W1_HardFault_IRQn 0 */
-  }
-}
+/* HardFault_Handler is defined in main.c (naked trampoline + C handler).
+   The definition here is removed to avoid a duplicate-symbol linker error. */
 
 /**
   * @brief This function handles Memory management fault.
@@ -160,7 +158,8 @@ void DebugMon_Handler(void)
 /******************************************************************************/
 
 /**
-  * @brief This function handles TIM6 global interrupt, DAC1 and DAC2 underrun error interrupts.
+  * @brief This function handles TIM6 global interrupt, DAC1 and DAC2 underrun
+  *        error interrupts. TIM6 is used as the HAL timebase source.
   */
 void TIM6_DAC_IRQHandler(void)
 {

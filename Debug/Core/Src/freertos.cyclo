@@ -1,8 +1,0 @@
-../Drivers/CMSIS/Include/core_cm7.h:2147:34:__NVIC_SystemReset	1
-../Core/Src/freertos.c:82:5:check_update_available	1
-../Core/Src/freertos.c:87:6:download_firmware	1
-../Core/Src/freertos.c:95:6:MX_FREERTOS_Init	1
-../Core/Src/freertos.c:154:6:StartSensorTask	4
-../Core/Src/freertos.c:194:6:StartDSPTask	7
-../Core/Src/freertos.c:272:6:StartTelemetryTask	2
-../Core/Src/freertos.c:309:6:StartOtaTask	1

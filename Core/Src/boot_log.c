@@ -13,4 +13,5 @@ void boot_log(const char *fmt, ...)
     va_end(args);
 
     HAL_UART_Transmit(&huart3, (uint8_t*)buffer, strlen(buffer), 100);
+    printf("UART TEST\r\n");
 }

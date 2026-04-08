@@ -785,6 +785,30 @@ static void MX_GPIO_Init(void) {
 
 /* USER CODE BEGIN 4 */
 
+/* ── FreeRTOS Stack-Overflow Hook ────────────────────────────────────────────
+ * Called when FreeRTOS detects that a task has overrun its stack.
+ * configCHECK_FOR_STACK_OVERFLOW must be 1 or 2 in FreeRTOSConfig.h.
+ *
+ * We blink LD3 (red, PB14) rapidly and print the task name so the
+ * offending task can be identified on the USART3 terminal.  The IWDG
+ * will eventually reset the board.  Increase the task's stack_size in
+ * osThreadAttr_t to fix the underlying issue.
+ * ─────────────────────────────────────────────────────────────────────────── */
+void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName)
+{
+  (void)xTask;
+  printf("\r\n!!! STACK OVERFLOW in task: %s !!!\r\n", pcTaskName);
+  printf("!!! Increase stack_size in osThreadAttr_t for this task. !!!\r\n");
+
+  /* Blink LD3 red rapidly until IWDG resets */
+  for (;;) {
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_14, GPIO_PIN_SET);
+    for (volatile uint32_t d = 0; d < 80000UL; d++);
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_14, GPIO_PIN_RESET);
+    for (volatile uint32_t d = 0; d < 80000UL; d++);
+  }
+}
+
 /* USER CODE END 4 */
 
 /* ---------------------------------------------------------------------------*/

@@ -43,8 +43,9 @@ void ota_confirm_update(void)
 
     printf("OTA: Confirming update — marking firmware as stable\n");
 
-    /* Clear the pending flag, keep all other fields intact */
-    meta.pending_update = 0U;
+    /* Clear the pending flag and reset the rollback counter */
+    meta.pending_update  = 0U;
+    meta.boot_fail_count = 0U;  /* firmware confirmed stable — reset rollback watchdog */
 
     /* Erase metadata sector then re-write with updated struct */
     if (flash_erase(OTA_METADATA_ADDR, FLASH_METADATA_SIZE) != 0)

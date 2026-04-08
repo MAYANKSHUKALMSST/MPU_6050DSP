@@ -328,7 +328,49 @@
       </button>
     </div>
 
+    <!-- Flash progress (shown during active OTA push) -->
+    <div class="flash-progress-wrap" id="flash-progress-wrap" style="display:none">
+      <div class="flash-progress-label">
+        <span>Flashing firmware…</span>
+        <span id="flash-pct">0%</span>
+      </div>
+      <div class="progress-bar-wrap">
+        <div class="progress-bar flash-bar" id="flash-bar" style="width:0%"></div>
+      </div>
+      <div class="flash-detail" id="flash-detail"></div>
+    </div>
+
     <div class="ota-status-msg" id="ota-status-msg"></div>
+  </section>
+
+  <!-- ── Fault Thresholds ── -->
+  <section class="panel span-2">
+    <div class="panel-header">
+      <div class="panel-title"><span class="panel-icon">⚙</span> Fault Thresholds</div>
+    </div>
+    <div class="threshold-grid">
+      <div class="thresh-item">
+        <label class="thresh-label">Peak Vibration (g)</label>
+        <div class="thresh-hint">FFT peak — STM32 DSP fault flag</div>
+        <input type="number" id="thresh-peak" class="thresh-input" step="0.1" min="0.1" value="1.0">
+      </div>
+      <div class="thresh-item">
+        <label class="thresh-label">Crest Factor</label>
+        <div class="thresh-hint">Healthy ≈ 1.4 · Early wear &gt; 3.5 · Severe &gt; 5</div>
+        <input type="number" id="thresh-cf" class="thresh-input" step="0.1" min="1.0" value="3.5">
+      </div>
+      <div class="thresh-item">
+        <label class="thresh-label">Kurtosis</label>
+        <div class="thresh-hint">Gaussian ≈ 3 · Impulsive &gt; 5 · Severe &gt; 10</div>
+        <input type="number" id="thresh-kurt" class="thresh-input" step="0.5" min="3.0" value="5.0">
+      </div>
+    </div>
+    <div class="thresh-actions">
+      <button class="action-btn primary" id="thresh-save-btn">Save Thresholds</button>
+      <button class="action-btn" id="export-tele-csv-btn">↓ Telemetry CSV</button>
+      <button class="action-btn" id="export-faults-csv-btn">↓ Faults CSV</button>
+    </div>
+    <div class="ota-status-msg" id="thresh-status-msg"></div>
   </section>
 
   <!-- ── Device Event Log ── -->

@@ -222,6 +222,7 @@ void doFlash() {
 
   // ── Step 2: Try trigger up to 5 times ─────────────────────
   otaProg = 10; otaMsg = "Triggering bootloader...";
+  cloudLog("OTA", "Progress: 10% — triggering bootloader");
   bool triggered = false;
 
   for (int attempt = 0; attempt < 5 && !triggered; attempt++) {
@@ -238,9 +239,10 @@ void doFlash() {
     memcpy(hdr+8, fw_hash, 32);
     Serial2.write(hdr, 40); Serial2.flush();
 
-    otaProg = 15; otaMsg = "Erasing flash...";
+    otaProg = 15; otaMsg = "Erasing Slot B...";
     if (waitB(OTA_ACK, 12000)) {
       triggered = true;
+      cloudLog("OTA", "Progress: 18% — bootloader ACK, Slot B erased");
       Serial.println("[OTA] Bootloader ACK received!");
     } else {
       Serial.println("[OTA] No ACK, retrying...");
@@ -259,6 +261,7 @@ void doFlash() {
   if (!f) { otaMsg = "File read error"; otaState = "error"; return; }
 
   uint32_t sent = 0; uint16_t seq = 0;
+  uint32_t lastProgressLog = 0;  // track bytes at last cloudLog to avoid flooding
   while (sent < fwsz) {
     uint16_t clen = min((uint32_t)CHUNK_SZ, fwsz - sent);
     f.read(chunk_buf, clen);
@@ -281,11 +284,19 @@ void doFlash() {
     otaProg = 20 + (int)(sent * 70UL / fwsz);
     otaMsg = "Flashing " + String(otaProg) + "%";
     server.handleClient();
+
+    // Report progress to cloud every 16 KB to keep dashboard live
+    if (sent - lastProgressLog >= 16384 || sent == fwsz) {
+      cloudLog("OTA", "Progress: " + String(otaProg) + "% — " +
+               String(sent / 1024) + "/" + String(fwsz / 1024) + " KB");
+      lastProgressLog = sent;
+    }
   }
   f.close();
 
   // ── Step 6: Verify ────────────────────────────────────────
-  otaProg = 95; otaMsg = "Verifying...";
+  otaProg = 95; otaMsg = "Verifying SHA-256...";
+  cloudLog("OTA", "Progress: 95% — verifying SHA-256");
   if (!waitB(OTA_DONE_BYTE, 10000)) {
     otaMsg = "Verification failed"; otaState = "error"; return;
   }
@@ -294,6 +305,7 @@ void doFlash() {
   Serial2.write(&rb, 1);
   SPIFFS.remove("/update.bin");
   otaState = "done"; otaProg = 100; otaMsg = "Success! STM32 rebooting.";
+  cloudLog("OTA", "Progress: 100% — flash complete, STM32 rebooting");
   Serial.println("[OTA] SUCCESS");
 }
 

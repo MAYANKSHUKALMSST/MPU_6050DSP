@@ -44,7 +44,8 @@ function requireAuth(req, res, next) {
 }
 
 // ─── Config paths ──────────────────────────────────────────────
-const EMAIL_CONFIG_FILE = path.join(__dirname, 'email_config.json');
+const EMAIL_CONFIG_FILE      = path.join(__dirname, 'email_config.json');
+const THRESHOLDS_CONFIG_FILE = path.join(__dirname, 'thresholds_config.json');
 
 // ─── State ─────────────────────────────────────────────────────
 let stm32Socket      = null;  // active TCP connection from STM32/ESP32
@@ -142,6 +143,31 @@ async function sendFaultAlert(peak, freq) {
 
 loadEmailConfig();
 
+// ─── Fault Thresholds ──────────────────────────────────────────
+// Thresholds are checked server-side on every CI computation.
+// When any indicator crosses its threshold the server fires a
+// ci_fault broadcast AND sends an email alert (same cooldown as
+// the FFT-based fault path).
+let thresholds = {
+    peak_g : 1.0,  // peak vibration in g (from DSP FFT)
+    cf     : 3.5,  // Crest Factor — healthy Gaussian ≈ 1.4; >3.5 = suspect
+    kurt   : 5.0   // Kurtosis     — healthy ≈ 3; >5 = impulsive, >10 = severe
+};
+
+function loadThresholds() {
+    try {
+        const raw = JSON.parse(fs.readFileSync(THRESHOLDS_CONFIG_FILE));
+        thresholds = { ...thresholds, ...raw };
+        console.log('[THRESH] Config loaded:', thresholds);
+    } catch (_) { /* first run — use defaults */ }
+}
+
+function saveThresholds() {
+    fs.writeFileSync(THRESHOLDS_CONFIG_FILE, JSON.stringify(thresholds, null, 2));
+}
+
+loadThresholds();
+
 function appendDeviceLog(level, msg) {
     const entry = { ts: Date.now(), level, msg };
     deviceLog.push(entry);
@@ -214,6 +240,7 @@ wss.on('connection', (ws, req) => {
         fault_log: faultLog,
         device_log: deviceLog,
         firmware: loadFirmwareMeta(),
+        thresholds,
         email_configured: !!(emailConfig.recipient && emailConfig.sender && emailConfig.password),
         email_recipient: emailConfig.recipient,
         email_sender: emailConfig.sender,
@@ -328,6 +355,50 @@ app.post('/api/email/test', requireAuth, async (_req, res) => {
     }
 });
 
+// ─── Thresholds API ────────────────────────────────────────────
+app.get('/api/thresholds', requireAuth, (_req, res) => {
+    res.json(thresholds);
+});
+
+app.post('/api/thresholds', requireAuth, (req, res) => {
+    const { peak_g, cf, kurt } = req.body || {};
+    if (peak_g !== undefined) thresholds.peak_g = +peak_g || thresholds.peak_g;
+    if (cf     !== undefined) thresholds.cf     = +cf     || thresholds.cf;
+    if (kurt   !== undefined) thresholds.kurt   = +kurt   || thresholds.kurt;
+    saveThresholds();
+    broadcast({ type: 'thresholds', ...thresholds });
+    console.log('[THRESH] Updated:', thresholds);
+    res.json({ success: true, thresholds });
+});
+
+// ─── CSV Export ────────────────────────────────────────────────
+app.get('/api/export/telemetry.csv', requireAuth, (_req, res) => {
+    const header = 'timestamp,ax,ay,az,temp,peak_hz,fault,cf,kurtosis\n';
+    const rows = telemetryHistory.map(t =>
+        [new Date(t.ts).toISOString(),
+         (t.ax||0).toFixed(4), (t.ay||0).toFixed(4), (t.az||0).toFixed(4),
+         (t.temp||0).toFixed(1), (t.freq||0).toFixed(1),
+         t.fault||0,
+         (t.cf||0).toFixed(3), (t.kurt||0).toFixed(3)
+        ].join(',')
+    ).join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="predictivEdge_telemetry.csv"');
+    res.send(header + rows);
+});
+
+app.get('/api/export/faults.csv', requireAuth, (_req, res) => {
+    const header = 'timestamp,peak_g,freq_hz\n';
+    const rows = faultLog.map(f =>
+        [new Date(f.ts).toISOString(),
+         (f.peak||0).toFixed(3), (f.freq||0).toFixed(1)
+        ].join(',')
+    ).join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="predictivEdge_faults.csv"');
+    res.send(header + rows);
+});
+
 // ─── TCP Server (STM32/ESP32 → Node) ──────────────────────────
 const tcpServer = net.createServer((socket) => {
     const remote = `${socket.remoteAddress}:${socket.remotePort}`;
@@ -378,6 +449,12 @@ const tcpServer = net.createServer((socket) => {
                 const level = colon >= 0 ? rest.slice(0, colon) : 'INFO';
                 const msg   = colon >= 0 ? rest.slice(colon + 1) : rest;
                 appendDeviceLog(level, msg);
+
+                // OTA progress: LOG:OTA:Progress: N% — extract and broadcast
+                if (level === 'OTA' && msg.startsWith('Progress: ')) {
+                    const pct = parseInt(msg.slice(10));
+                    if (!isNaN(pct)) broadcast({ type: 'ota_progress', pct, msg });
+                }
                 continue;
             }
 
@@ -413,13 +490,32 @@ const tcpServer = net.createServer((socket) => {
                     broadcast({ type: 'device_status', connected: true, ts: stm32ConnectedAt, remote });
                 }
 
-                // Fault event recording + email alert
+                // ── FFT-based fault (from STM32 DSP task) ────────────
                 if (telemetry.fault === 1) {
-                    const event = { ts: telemetry.ts, peak: telemetry.peak, freq: telemetry.freq };
+                    const event = { ts: telemetry.ts, peak: telemetry.peak,
+                                    freq: telemetry.freq, source: 'dsp' };
                     faultLog.push(event);
                     if (faultLog.length > MAX_FAULT_LOG) faultLog.shift();
                     broadcast({ type: 'fault_event', ...event });
                     sendFaultAlert(telemetry.peak, telemetry.freq).catch(() => {});
+                }
+
+                // ── CI-based fault (server-side threshold check) ──────
+                // Checks Crest Factor and Kurtosis against user-defined
+                // thresholds.  Fires independently of the STM32 fault flag
+                // so early bearing wear (pre-FFT-detectable) is still caught.
+                if (telemetry.cf !== undefined || telemetry.kurt !== undefined) {
+                    const cfFault   = (telemetry.cf   || 0) > thresholds.cf;
+                    const kurtFault = (telemetry.kurt || 0) > thresholds.kurt;
+                    if (cfFault || kurtFault) {
+                        const reason = [
+                            cfFault   ? `CF=${(telemetry.cf||0).toFixed(2)} > ${thresholds.cf}`   : '',
+                            kurtFault ? `Kurt=${(telemetry.kurt||0).toFixed(2)} > ${thresholds.kurt}` : ''
+                        ].filter(Boolean).join(', ');
+                        broadcast({ type: 'ci_fault', reason,
+                                    cf: telemetry.cf, kurt: telemetry.kurt, ts: telemetry.ts });
+                        sendFaultAlert(telemetry.peak || 0, telemetry.freq || 0).catch(() => {});
+                    }
                 }
 
                 // Broadcast to dashboard

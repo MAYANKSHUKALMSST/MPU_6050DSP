@@ -33,8 +33,17 @@ typedef struct {
   uint32_t slot_a_size;        /* bytes of Slot A covered by hash   */
   uint8_t  slot_a_hash[32];    /* SHA-256 of the trusted Slot A     */
 
+  /* Rollback watchdog.
+   * Bootloader increments this BEFORE jumping to the app.
+   * ota_confirm_update() resets it to 0 on a successful post-OTA boot.
+   * If boot_fail_count reaches OTA_MAX_BOOT_FAILURES the bootloader
+   * gives up re-copying Slot B and halts → reflash via ST-Link required. */
+  uint32_t boot_fail_count;    /* consecutive failed boots after OTA */
+
 } ota_metadata_t;
-/* sizeof(ota_metadata_t) = 4+4+4+4+32+4+4+32 = 88 bytes (22 words) */
+/* sizeof(ota_metadata_t) = 4+4+4+4+32+4+4+32+4 = 92 bytes (23 words) */
+
+#define OTA_MAX_BOOT_FAILURES 3U
 
 /* Convenience pointer to the metadata sector in flash */
 #define OTA_METADATA_ADDR FLASH_METADATA_ADDR

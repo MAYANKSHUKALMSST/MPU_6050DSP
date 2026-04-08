@@ -125,6 +125,21 @@ const otaTriggerBtn  = document.getElementById('ota-trigger-btn');
 const rebootBtn      = document.getElementById('reboot-btn');
 const otaStatusMsg   = document.getElementById('ota-status-msg');
 
+// Flash progress bar (shown during active OTA push)
+const flashProgressWrap = document.getElementById('flash-progress-wrap');
+const flashBar          = document.getElementById('flash-bar');
+const flashPct          = document.getElementById('flash-pct');
+const flashDetail       = document.getElementById('flash-detail');
+
+// Thresholds + CSV
+const threshPeak      = document.getElementById('thresh-peak');
+const threshCf        = document.getElementById('thresh-cf');
+const threshKurt      = document.getElementById('thresh-kurt');
+const threshSaveBtn   = document.getElementById('thresh-save-btn');
+const threshStatusMsg = document.getElementById('thresh-status-msg');
+const exportTeleCsv   = document.getElementById('export-tele-csv-btn');
+const exportFaultsCsv = document.getElementById('export-faults-csv-btn');
+
 // ─── Constants ─────────────────────────────────────────────────
 let MAX_POINTS   = 120;   // chart rolling window
 const FREQ_MAX     = 200;   // Hz ceiling for gauge
@@ -499,7 +514,11 @@ function setOtaMsg(msg, type = 'info') {
 }
 
 // ─── File Upload ───────────────────────────────────────────────
+// Clicking the drop zone opens the hidden file picker.
+// stopPropagation on the input itself prevents the click from
+// bubbling back up to the drop zone listener → no double popup.
 dropZone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('click', e => e.stopPropagation());
 fileInput.addEventListener('change', e => { if (e.target.files[0]) doUpload(e.target.files[0]); });
 
 ['dragenter','dragover','dragleave','drop'].forEach(ev =>
@@ -605,6 +624,8 @@ function connect() {
                 if (msg.email_sender)    emailSender.value    = msg.email_sender;
                 if (msg.email_cooldown)  emailCooldown.value  = msg.email_cooldown;
                 setEmailChip(msg.email_configured);
+                // Restore thresholds
+                if (msg.thresholds) applyThresholds(msg.thresholds);
                 break;
 
             case 'telemetry':
@@ -628,11 +649,22 @@ function connect() {
 
             case 'ota_triggered':
                 setOtaMsg('OTA push sent — device downloading firmware…', 'info');
+                showFlashProgress(0, 'Downloading firmware…');
+                break;
+
+            case 'ota_progress':
+                showFlashProgress(msg.pct, msg.msg || '');
                 break;
 
             case 'ota_flash_result':
                 showFlashToast(msg.success, msg.message);
                 setOtaMsg(msg.message, msg.success ? 'success' : 'error');
+                // Hide flash progress bar after a short delay
+                setTimeout(() => hideFlashProgress(), msg.success ? 2000 : 4000);
+                break;
+
+            case 'ci_fault':
+                showFlashToast(false, 'CI Fault: ' + msg.reason);
                 break;
 
             case 'device_reboot':
@@ -650,6 +682,10 @@ function connect() {
 
             case 'email_config':
                 setEmailChip(msg.configured);
+                break;
+
+            case 'thresholds':
+                applyThresholds(msg);
                 break;
         }
     };
@@ -701,6 +737,70 @@ emailTestBtn.addEventListener('click', async () => {
     } catch (e) { setEmailMsg('Error: ' + e.message, 'error'); }
     finally { emailTestBtn.disabled = false; }
 });
+
+// ─── OTA Flash Progress ─────────────────────────────────────────
+function showFlashProgress(pct, detail) {
+    if (!flashProgressWrap) return;
+    flashProgressWrap.style.display = 'block';
+    const p = Math.min(100, Math.max(0, pct));
+    flashBar.style.width = p + '%';
+    flashPct.textContent = p + '%';
+    if (detail) flashDetail.textContent = detail.replace(/^Progress: \d+% — /, '');
+}
+
+function hideFlashProgress() {
+    if (!flashProgressWrap) return;
+    flashProgressWrap.style.display = 'none';
+    flashBar.style.width = '0%';
+    flashPct.textContent = '0%';
+    flashDetail.textContent = '';
+}
+
+// ─── Fault Thresholds ───────────────────────────────────────────
+function applyThresholds(t) {
+    if (threshPeak && t.peak_g !== undefined) threshPeak.value = t.peak_g;
+    if (threshCf   && t.cf    !== undefined) threshCf.value   = t.cf;
+    if (threshKurt && t.kurt  !== undefined) threshKurt.value = t.kurt;
+}
+
+function setThreshMsg(msg, type = 'info') {
+    if (!threshStatusMsg) return;
+    threshStatusMsg.textContent = msg;
+    threshStatusMsg.className   = `ota-status-msg ota-msg-${type}`;
+    if (msg) setTimeout(() => { threshStatusMsg.textContent = ''; threshStatusMsg.className = 'ota-status-msg'; }, 5000);
+}
+
+threshSaveBtn?.addEventListener('click', async () => {
+    threshSaveBtn.disabled = true;
+    try {
+        const r = await fetch('/api/thresholds', {
+            method: 'POST', headers: authHeaders(),
+            body: JSON.stringify({
+                peak_g: parseFloat(threshPeak?.value) || 1.0,
+                cf:     parseFloat(threshCf?.value)   || 3.5,
+                kurt:   parseFloat(threshKurt?.value)  || 5.0
+            })
+        });
+        const d = await r.json();
+        if (d.success) setThreshMsg('Thresholds saved.', 'success');
+        else setThreshMsg(d.error || 'Save failed', 'error');
+    } catch (e) { setThreshMsg('Error: ' + e.message, 'error'); }
+    finally { threshSaveBtn.disabled = false; }
+});
+
+// ─── Server-side CSV Export ─────────────────────────────────────
+function serverCSVDownload(endpoint, filename) {
+    const url = `${endpoint}?token=${encodeURIComponent(getToken() || '')}`;
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+
+exportTeleCsv?.addEventListener('click', () =>
+    serverCSVDownload('/api/export/telemetry.csv', 'predictivEdge_telemetry.csv'));
+
+exportFaultsCsv?.addEventListener('click', () =>
+    serverCSVDownload('/api/export/faults.csv', 'predictivEdge_faults.csv'));
 
 // ─── Theme Toggle & High-Tech Features ───────────────────────────
 const themeToggle = document.getElementById('theme-toggle');

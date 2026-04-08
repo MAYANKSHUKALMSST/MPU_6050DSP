@@ -9,16 +9,19 @@ _Min_Heap_Size = 0x200;
 _Min_Stack_Size = 0x400;
 
 /* Memory layout for OTA system
-   0x08000000 - 0x0801FFFF  Bootloader (128KB)
-   0x08020000 - 0x0807FFFF  Application SLOT_A
-*/
+   0x08000000 - 0x0801FFFF  Bootloader     (128 KB, sectors 0-4)
+   0x08020000 - 0x0803FFFF  Slot A — app   (128 KB, sector 5)   ← link target
+   0x08040000 - 0x0805FFFF  Slot B — OTA   (128 KB, sector 6)   ← staging area
+   0x08060000 - 0x0807FFFF  Metadata       (128 KB, sector 7)
+
+   IMPORTANT: LENGTH must stay 128K.  The OTA bootloader rejects any
+   binary > 128KB (FLASH_SLOT_B_SIZE).  If the linker reports an overflow
+   here, the fix is to reduce code size — NOT to increase LENGTH.          */
 
 MEMORY
 {
-  RAM (xrw)  : ORIGIN = 0x20000000, LENGTH = 256K
-  /* Slot A + Slot B = 256 KB (sectors 5-6).
-     Sector 7 (0x08060000) is reserved for OTA metadata — never link into it. */
-  FLASH (rx) : ORIGIN = 0x08020000, LENGTH = 256K
+  RAM   (xrw) : ORIGIN = 0x20000000, LENGTH = 256K
+  FLASH (rx)  : ORIGIN = 0x08020000, LENGTH = 128K   /* Slot A only */
 }
 
 /* Sections */

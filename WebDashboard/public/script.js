@@ -86,6 +86,7 @@ const kpiPeak        = document.getElementById('kpi-peak');
 const kpiFreq        = document.getElementById('kpi-freq');
 const kpiTemp        = document.getElementById('kpi-temp');
 const kpiFaults      = document.getElementById('kpi-faults');
+const kpiOverflows   = document.getElementById('kpi-overflows');
 const kpiTs          = document.getElementById('kpi-ts');
 
 const dspFreq        = document.getElementById('dsp-freq');
@@ -139,6 +140,10 @@ const threshSaveBtn   = document.getElementById('thresh-save-btn');
 const threshStatusMsg = document.getElementById('thresh-status-msg');
 const exportTeleCsv   = document.getElementById('export-tele-csv-btn');
 const exportFaultsCsv = document.getElementById('export-faults-csv-btn');
+
+const threshFwDsp     = document.getElementById('thresh-fw-dsp');
+const threshFwSaveBtn = document.getElementById('thresh-fw-save-btn');
+const requestLogsBtn  = document.getElementById('request-logs-btn');
 
 // ─── Constants ─────────────────────────────────────────────────
 let MAX_POINTS   = 120;   // chart rolling window
@@ -419,7 +424,53 @@ clearDevlogBtn.addEventListener('click', () => {
 
 // ─── Telemetry update ──────────────────────────────────────────
 function onTelemetry(d) {
-    // Accel chart
+    // 1. Diagnostic logging (viewable via Browser Subagent / DevTools)
+    // console.log('[TELE] Packet:', d);
+
+    // 2. Map shorthand keys from optimized firmware
+    const temp      = d.t   ?? d.temp;
+    const peak      = d.pk  ?? d.peak;
+    const freq      = d.fq  ?? d.freq;
+    const fault     = d.fl  ?? d.flt;
+    const overflows = d.ov  ?? d.ovr ?? 0;
+    const thr       = d.thr ?? 0;
+
+    // 3. Last Update & Network Rate
+    if (d.ts)   kpiTs.textContent   = fmtTime(d.ts);
+    if (d.rate) msgRate.textContent = d.rate;
+
+    // 4. Update Summary Cards (KPIs)
+    if (peak !== undefined) kpiPeak.textContent = `${peak.toFixed(3)} G`;
+    if (freq !== undefined) kpiFreq.textContent = `${freq.toFixed(1)} Hz`;
+    if (temp !== undefined) kpiTemp.textContent = `${temp.toFixed(1)} °C`;
+
+    if (overflows !== undefined) {
+        kpiOverflows.textContent = overflows;
+        kpiOverflows.className = (overflows > 0) ? 'kpi-value accent-red blink' : 'kpi-value';
+    }
+
+    if (fault !== undefined) {
+        const ok = (fault === 0);
+        kpiHealth.textContent    = ok ? 'HEALTHY' : 'FAULT';
+        kpiHealth.className      = `kpi-value ${ok ? 'accent-green' : 'accent-red blink'}`;
+        kpiHealthSub.textContent = ok ? 'All bands nominal' : 'Anomaly detected';
+    }
+
+    // 5. Update DSP Panel
+    if (freq !== undefined) {
+        dspFreq.textContent = `${freq.toFixed(1)} Hz`;
+        updateGauge(freq);
+    }
+    if (peak !== undefined) dspPeak.textContent = `${peak.toFixed(3)} G`;
+    if (temp !== undefined) dspTemp.textContent = `${temp.toFixed(1)} °C`;
+
+    if (fault !== undefined) {
+        const ok = (fault === 0);
+        dspStatus.textContent = ok ? '✓ Nominal' : '⚠ FAULT';
+        dspStatus.className   = `dsp-val ${ok ? 'accent-green' : 'accent-red'}`;
+    }
+
+    // 6. Update Charts
     if (d.ax !== undefined) {
         pushValue(accelChart, 0, d.ax);
         pushValue(accelChart, 1, d.ay);
@@ -428,39 +479,20 @@ function onTelemetry(d) {
         updateCube(d.ax, d.ay, d.az);
     }
 
-    // Peak trend chart
-    if (d.peak !== undefined) {
-        pushValue(peakChart, 0, d.peak);
+    if (peak !== undefined) {
+        pushValue(peakChart, 0, peak);
         peakChart.update('none');
     }
 
-    // Condition Indicators chart (CF & Kurtosis)
     if (d.cf !== undefined || d.kurt !== undefined) {
         if (d.cf   !== undefined) pushValue(condChart, 0, d.cf);
         if (d.kurt !== undefined) pushValue(condChart, 1, d.kurt);
         condChart.update('none');
     }
 
-    // KPI cards
-    if (d.peak !== undefined)  kpiPeak.textContent  = `${d.peak.toFixed(3)} G`;
-    if (d.freq !== undefined)  kpiFreq.textContent  = `${d.freq.toFixed(1)} Hz`;
-    if (d.temp !== undefined)  kpiTemp.textContent  = `${d.temp.toFixed(1)} °C`;
-    if (d.ts   !== undefined)  kpiTs.textContent    = fmtTime(d.ts);
-    if (d.rate !== undefined)  msgRate.textContent  = d.rate;
-
-    // DSP panel
-    if (d.freq !== undefined) { dspFreq.textContent = `${d.freq.toFixed(1)} Hz`; updateGauge(d.freq); }
-    if (d.peak !== undefined)   dspPeak.textContent = `${d.peak.toFixed(3)} G`;
-    if (d.temp !== undefined)   dspTemp.textContent = `${d.temp.toFixed(1)} °C`;
-
-    // Health
-    if (d.fault !== undefined) {
-        const ok = d.fault === 0;
-        kpiHealth.textContent     = ok ? 'HEALTHY' : 'FAULT';
-        kpiHealth.className       = `kpi-value ${ok ? 'accent-green' : 'accent-red blink'}`;
-        kpiHealthSub.textContent  = ok ? 'All bands nominal' : 'Anomaly detected';
-        dspStatus.textContent     = ok ? '✓ Nominal' : '⚠ FAULT';
-        dspStatus.className       = `dsp-val ${ok ? 'accent-green' : 'accent-red'}`;
+    // 7. Sync Parameter Tuning
+    if (thr > 0 && document.activeElement !== threshFwDsp) {
+        threshFwDsp.value = thr.toFixed(3);
     }
 }
 
@@ -585,6 +617,44 @@ rebootBtn.addEventListener('click', () => {
             else setOtaMsg('Reboot failed: ' + (d.error || 'unknown'), 'error');
         })
         .catch(e => setOtaMsg('Error: ' + e.message, 'error'));
+});
+
+// ─── Firmware Tuning ───────────────────────────────────────────
+threshFwSaveBtn.addEventListener('click', async () => {
+    const val = parseFloat(threshFwDsp.value);
+    if (isNaN(val) || val < 0.05 || val > 5) {
+        setOtaMsg('Invalid threshold (0.05 - 5.0)', 'error');
+        return;
+    }
+    threshFwSaveBtn.disabled = true;
+    try {
+        const r = await fetch('/api/device/set-param', {
+            method: 'POST', headers: authHeaders(),
+            body: JSON.stringify({ name: 'threshold', value: val })
+        });
+        const d = await r.json();
+        if (d.success) setOtaMsg(`DSP Threshold update sent to device.`, 'success');
+        else setOtaMsg(d.error || 'Update failed', 'error');
+    } catch (e) { setOtaMsg('Error: ' + e.message, 'error'); }
+    finally { threshFwSaveBtn.disabled = false; }
+});
+
+// ─── Request Logs ──────────────────────────────────────────────
+requestLogsBtn.addEventListener('click', async () => {
+    requestLogsBtn.disabled = true;
+    requestLogsBtn.textContent = 'Fetching…';
+    try {
+        const r = await fetch('/api/device/request-logs', { method: 'POST', headers: authHeaders() });
+        const d = await r.json();
+        if (d.success) setOtaMsg('Status request sent to device.', 'success');
+        else setOtaMsg(d.error || 'Request failed', 'error');
+    } catch (e) { setOtaMsg('Error: ' + e.message, 'error'); }
+    finally {
+        setTimeout(() => {
+            requestLogsBtn.disabled = false;
+            requestLogsBtn.textContent = 'Fetch Device Status';
+        }, 2000);
+    }
 });
 
 // ─── WebSocket ─────────────────────────────────────────────────

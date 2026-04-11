@@ -1,6 +1,7 @@
 "./Core/Src/boot_log.o"
 "./Core/Src/boot_manager.o"
 "./Core/Src/freertos.o"
+"./Core/Src/hw_290.o"
 "./Core/Src/main.o"
 "./Core/Src/mpu6050.o"
 "./Core/Src/network_interface.o"

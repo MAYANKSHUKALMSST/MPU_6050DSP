@@ -76,9 +76,6 @@ HAL_StatusTypeDef MPU6050_Init(I2C_HandleTypeDef *hi2c)
     if (s != HAL_OK) return s;
 
     /* Accel ±2g */
-    s = mpu_write(hi2c, MPU6050_REG_ACCEL_CONFIG, 0x00);
-    if (s != HAL_OK) return s;
-
     /* Enable Data Ready interrupt */
     s = mpu_write(hi2c, MPU6050_REG_INT_ENABLE, 0x01);
 

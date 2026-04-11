@@ -8,8 +8,8 @@ setlocal
 set KEY=C:\Users\mayan\Downloads\pvt_keys.ppk
 set HOST=ubuntu@161.118.167.196
 set REMOTE=/opt/predictivEdge
-set PSCP=pscp
-set PLINK=plink
+set PSCP="C:\Program Files\PuTTY\pscp.exe"
+set PLINK="C:\Program Files\PuTTY\plink.exe"
 
 echo.
 echo =============================================

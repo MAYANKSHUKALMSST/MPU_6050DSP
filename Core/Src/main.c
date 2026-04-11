@@ -19,7 +19,8 @@
 #include "ota/ota_metadata.h"  /* ota_confirm_update() — blinks LD3 on OTA boot */
 #include <stdio.h>
 #include <string.h>
-
+#include <stdlib.h>
+#include <stdint.h>
 /* IWDG is driven directly via registers (stm32f722xx.h) — no HAL driver needed
  */
 /* USER CODE END Includes */
@@ -33,9 +34,13 @@ typedef struct {
   volatile float peak;
   volatile float freq;
   volatile int fault;
+  volatile uint32_t overflows;
 } TelemetryData_t;
 
 volatile TelemetryData_t g_telemetry = {0};
+volatile char g_reset_reason[32] = "Unknown";
+volatile float g_dsp_threshold = 0.25f;
+volatile uint32_t g_dsp_param_version = 0;
 
 /* Queue message: MPU6050_Data_t (28 bytes) + 4 bytes pad = exactly 32 bytes */
 typedef struct {
@@ -147,10 +152,55 @@ void StartTelemetryTask(void *argument);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+/**
+ * @brief  Convert float to string with fixed precision.
+ *         Avoids inclusion of _printf_float to save flash space.
+ */
+char *ftoa_fixed(char *buf, float val, int precision) {
+  if (!buf) return buf;
+  char *ptr = buf;
+  if (val < 0) { *ptr++ = '-'; val = -val; }
+  long p_int = (long)val;
+  float p_frac = val - (float)p_int;
+  /* Manual integer conversion instead of sprintf */
+  char tmp[16]; int i = 0;
+  if (p_int == 0) tmp[i++] = '0';
+  else { while (p_int > 0) { tmp[i++] = (p_int % 10) + '0'; p_int /= 10; } }
+  while (i > 0) *ptr++ = tmp[--i];
+  if (precision > 0) {
+    *ptr++ = '.';
+    for (int j = 0; j < precision; j++) {
+      p_frac *= 10.0f;
+      int digit = (int)p_frac;
+      *ptr++ = digit + '0';
+      p_frac -= (float)digit;
+    }
+  }
+  *ptr = '\0';
+  return buf;
+}
+
+float atof_simple(const char *s) {
+  float res = 0, fact = 1;
+  if (*s == '-') { s++; fact = -1; }
+  for (int point_seen = 0; *s; s++) {
+    if (*s == '.') { point_seen = 1; continue; }
+    int d = *s - '0';
+    if (d >= 0 && d <= 9) {
+      if (point_seen) fact /= 10.0f;
+      res = res * 10.0f + (float)d;
+    }
+  }
+  return res * fact;
+}
+
 #include <stdarg.h>
 
 osMutexId_t printMutexHandle = NULL;
 const osMutexAttr_t printMutex_attributes = {.name = "printMutex"};
+
+osMutexId_t i2cMutexHandle = NULL;
+const osMutexAttr_t i2cMutex_attributes = {.name = "i2cMutex"};
 
 void safe_printf(const char *fmt, ...) {
   /* If inside an interrupt (IPSR != 0) or OS not running, bypass the mutex */
@@ -191,6 +241,18 @@ int __io_putchar(int ch) {
  */
 int main(void) {
   /* USER CODE BEGIN 1 */
+
+  /* Capture Reset Reason before HAL_Init clears RCC flags */
+  if (RCC->CSR & RCC_CSR_LPWRRSTF) strcpy((char *)g_reset_reason, "LowPower");
+  else if (RCC->CSR & RCC_CSR_WWDGRSTF) strcpy((char *)g_reset_reason, "WindowCDG");
+  else if (RCC->CSR & RCC_CSR_IWDGRSTF) strcpy((char *)g_reset_reason, "IndepWDG");
+  else if (RCC->CSR & RCC_CSR_SFTRSTF) strcpy((char *)g_reset_reason, "Software");
+  else if (RCC->CSR & RCC_CSR_PORRSTF) strcpy((char *)g_reset_reason, "PowerOn");
+  else if (RCC->CSR & RCC_CSR_PINRSTF) strcpy((char *)g_reset_reason, "ExternalPin");
+  else strcpy((char *)g_reset_reason, "Hardware");
+  
+  /* Clear reset flags */
+  RCC->CSR |= RCC_CSR_RMVF;
 
   /* ── LED ENTRY DIAGNOSTIC ────────────────────────────────────────────────
    * This runs before VTOR, before __enable_irq(), before UART — pure GPIO.
@@ -448,6 +510,7 @@ int main(void) {
 
   /* USER CODE BEGIN RTOS_MUTEX */
   printMutexHandle = osMutexNew(&printMutex_attributes);
+  i2cMutexHandle = osMutexNew(&i2cMutex_attributes);
   /* USER CODE END RTOS_MUTEX */
 
   /* USER CODE BEGIN RTOS_SEMAPHORES */
@@ -902,15 +965,13 @@ void StartSensorTask(void *argument) {
       g_telemetry.az = msg.data.accel_z;
       g_telemetry.temp = msg.data.temp_c;
 
-      /* Print a summary twice per second (every 250 samples) */
+      /* Print summary twice per second (every 250 samples) to USART3 */
       if (++printTick >= 250U) {
         printTick = 0U;
-        printf("IMU | Ax=%6.3f  Ay=%6.3f  Az=%6.3f g"
-               "  |  Gx=%7.2f  Gy=%7.2f  Gz=%7.2f deg/s"
-               "  |  T=%.1f C\r\n",
-               msg.data.accel_x, msg.data.accel_y, msg.data.accel_z,
-               msg.data.gyro_x, msg.data.gyro_y, msg.data.gyro_z,
-               msg.data.temp_c);
+        char sa[16], sb[16], sc[16], sd[16];
+        printf("IMU|A:%s,%s,%s|T:%s\n",
+               ftoa_fixed(sa, msg.data.accel_x, 3), ftoa_fixed(sb, msg.data.accel_y, 3),
+               ftoa_fixed(sc, msg.data.accel_z, 3), ftoa_fixed(sd, msg.data.temp_c, 1));
       }
     } else {
       printf("SENSOR: I2C read error\r\n");
@@ -960,8 +1021,7 @@ void StartDSPTask(void *argument) {
   imu_msg_t msg;
   uint32_t sampleIdx = 0U;
 
-  printf("DSP:  FFT engine ready (%u-point, %u Hz, fault band 10-200 Hz)\r\n",
-         DSP_FFT_SIZE, (unsigned)DSP_SAMPLE_RATE_HZ);
+  printf("DSP: Ready (%u-pt)\n", DSP_FFT_SIZE);
 
   for (;;) {
     /* Block indefinitely until SensorTask delivers a sample */
@@ -1004,12 +1064,12 @@ void StartDSPTask(void *argument) {
 
     /* ---- Report result ---- */
     int fault_status = 0;
+    char sa[16], sb[16];
     if (peakMag > DSP_FAULT_THRESHOLD) {
       fault_status = 1;
-      printf("DSP:  *** BEARING FAULT *** peak=%.3f g @ %.1f Hz\r\n", peakMag,
-             peakFreq);
+      printf("DSP:FAULT %sg @ %sHz\n", ftoa_fixed(sa, peakMag, 3), ftoa_fixed(sb, peakFreq, 1));
     } else {
-      printf("DSP:  OK -- peak=%.3f g @ %.1f Hz\r\n", peakMag, peakFreq);
+      printf("DSP:OK %sg @ %sHz\n", ftoa_fixed(sa, peakMag, 3), ftoa_fixed(sb, peakFreq, 1));
     }
 
     g_telemetry.peak = peakMag;
@@ -1019,7 +1079,6 @@ void StartDSPTask(void *argument) {
   /* USER CODE END StartDSPTask */
 }
 
-/* USER CODE BEGIN Header_StartTelemetryTask */
 /**
  * @brief  Function implementing the TelemetryTask thread.
  *         Send FFT results / fault flags to ESP32 via USART6.
@@ -1037,22 +1096,27 @@ void StartTelemetryTask(void *argument) {
   osDelay(2500);
 
   for (;;) {
-    char json[128];
+    if (printMutexHandle) osMutexAcquire(printMutexHandle, osWaitForever);
 
-    if (printMutexHandle)
-      osMutexAcquire(printMutexHandle, osWaitForever);
-    int len = snprintf(json, sizeof(json),
-                       "{\"ax\":%.3f,\"ay\":%.3f,\"az\":%.3f,\"temp\":%.1f,"
-                       "\"peak\":%.3f,\"freq\":%.1f,\"fault\":%d}\n",
-                       g_telemetry.ax, g_telemetry.ay, g_telemetry.az,
-                       g_telemetry.temp, g_telemetry.peak, g_telemetry.freq,
-                       g_telemetry.fault);
-    if (printMutexHandle)
-      osMutexRelease(printMutexHandle);
+    char s[16];
+    /* Construct JSON manually to save format string space and snprintf overhead */
+    network_send((uint8_t *)"{\"ax\":", 6);  network_send((uint8_t *)ftoa_fixed(s, g_telemetry.ax, 3), strlen(s));
+    network_send((uint8_t *)",\"ay\":", 6);  network_send((uint8_t *)ftoa_fixed(s, g_telemetry.ay, 3), strlen(s));
+    network_send((uint8_t *)",\"az\":", 6);  network_send((uint8_t *)ftoa_fixed(s, g_telemetry.az, 3), strlen(s));
+    network_send((uint8_t *)",\"t\":", 5);    network_send((uint8_t *)ftoa_fixed(s, g_telemetry.temp, 1), strlen(s));
+    network_send((uint8_t *)",\"pk\":", 6);   network_send((uint8_t *)ftoa_fixed(s, g_telemetry.peak, 4), strlen(s));
+    network_send((uint8_t *)",\"fq\":", 6);   network_send((uint8_t *)ftoa_fixed(s, g_telemetry.freq, 1), strlen(s));
+    
+    char tmp[32];
+    int l = sprintf(tmp, ",\"fl\":%d", g_telemetry.fault); network_send((uint8_t *)tmp, l);
+    
+    network_send((uint8_t *)",\"thr\":", 7); network_send((uint8_t *)ftoa_fixed(s, g_dsp_threshold, 3), strlen(s));
+    
+    l = sprintf(tmp, ",\"ov\":%lu", (unsigned long)g_telemetry.overflows); network_send((uint8_t *)tmp, l);
+    
+    network_send((uint8_t *)"}\n", 2);
 
-    if (network_send((uint8_t *)json, len) < 0) {
-      printf("TEL: Output pipeline busy.\n");
-    }
+    if (printMutexHandle) osMutexRelease(printMutexHandle);
 
     /* Check for incoming commands from ESP32 (byte-by-byte, non-blocking).
      * HAL_UART_Receive with len=63 would block until 63 bytes arrive or
@@ -1091,7 +1155,41 @@ void StartTelemetryTask(void *argument) {
            * Calling it would race with the ESP32 download and always fail with
            * "OTA: Version check failed".
            */
-          printf("TEL: UPDATE received — ESP32 downloading firmware, will send REBOOT when ready\n");
+          printf("TEL: UPD Busy\n");
+        } else if (strstr(cmd_buf, "PARAM:THR:")) {
+          char *p = strstr(cmd_buf, "PARAM:THR:") + 10;
+          float val = atof_simple(p);
+          if (val > 0.0f && val < 5.0f) {
+            g_dsp_threshold = val;
+            g_dsp_param_version++;
+            char log[48];
+            int l = snprintf(log, sizeof(log), "LOG:INFO:Thr -> %s g\n", ftoa_fixed(s, val, 3));
+            network_send((uint8_t *)log, l);
+          }
+        } else if (strstr(cmd_buf, "GET_LOGS")) {
+          char log[64];
+          int l;
+          network_send((uint8_t *)"LOG:INFO:-- STATUS --\n", 22);
+          
+          l = snprintf(log, sizeof(log), "LOG:INFO:Bld: %s\n", __DATE__);
+          network_send((uint8_t *)log, l);
+          
+          l = snprintf(log, sizeof(log), "LOG:INFO:Boot: %s\n", (char *)g_reset_reason);
+          network_send((uint8_t *)log, l);
+          
+          l = snprintf(log, sizeof(log), "LOG:INFO:Heap: %u B\n", (unsigned int)xPortGetFreeHeapSize());
+          network_send((uint8_t *)log, l);
+          
+          l = snprintf(log, sizeof(log), "LOG:INFO:Uptime: %lu s\n", (unsigned long)(HAL_GetTick() / 1000));
+          network_send((uint8_t *)log, l);
+
+          l = snprintf(log, sizeof(log), "LOG:INFO:Thr: %s g\n", ftoa_fixed(s, g_dsp_threshold, 3));
+          network_send((uint8_t *)log, l);
+
+          l = snprintf(log, sizeof(log), "LOG:INFO:CPU: %lu MHz\n", HAL_RCC_GetSysClockFreq() / 1000000);
+          network_send((uint8_t *)log, l);
+
+          network_send((uint8_t *)"LOG:INFO:--- End Status ---\n", 28);
         }
       }
     }
@@ -1136,32 +1234,6 @@ void Error_Handler(void) {
     /* IWDG fires after 2 seconds and resets the MCU cleanly */
   }
   /* USER CODE END Error_Handler_Debug */
-}
-
-/* ---------------------------------------------------------------------------*/
-/* FreeRTOS Fault Callbacks */
-/* ---------------------------------------------------------------------------*/
-
-/**
- * @brief  FreeRTOS stack overflow hook.
- *         Called when a task writes past the end of its stack.
- */
-void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName) {
-  (void)xTask;
-  printf("FAULT: Stack overflow in task [%s] — waiting for watchdog reset\r\n",
-         pcTaskName);
-  while (1) {
-  }
-}
-
-/**
- * @brief  FreeRTOS malloc failed hook.
- *         Called when pvPortMalloc() returns NULL.
- */
-void vApplicationMallocFailedHook(void) {
-  printf("FAULT: FreeRTOS heap exhausted — waiting for watchdog reset\r\n");
-  while (1) {
-  }
 }
 
 /* ---------------------------------------------------------------------------*/

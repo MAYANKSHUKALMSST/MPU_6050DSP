@@ -119,6 +119,11 @@
     <div class="kpi-sub">Session events</div>
   </div>
   <div class="kpi-card">
+    <div class="kpi-label">Queue Overflows</div>
+    <div class="kpi-value" id="kpi-overflows">0</div>
+    <div class="kpi-sub">Dropped samples</div>
+  </div>
+  <div class="kpi-card">
     <div class="kpi-label">Last Update</div>
     <div class="kpi-value mono" id="kpi-ts">—</div>
     <div class="kpi-sub">Timestamp</div>
@@ -214,6 +219,8 @@
       </div>
     </div>
   </section>
+
+  <!-- HW-290 Panel Removed (Sensor Agnostic Firmware) -->
 
   <!-- ── Fault Event Log ── -->
   <section class="panel">
@@ -364,6 +371,14 @@
         <div class="thresh-hint">Gaussian ≈ 3 · Impulsive &gt; 5 · Severe &gt; 10</div>
         <input type="number" id="thresh-kurt" class="thresh-input" step="0.5" min="3.0" value="5.0">
       </div>
+      <div class="thresh-item">
+        <label class="thresh-label">Firmware DSP Threshold (g)</label>
+        <div class="thresh-hint">STM32 internal trigger level</div>
+        <div style="display:flex; gap:0.5rem;">
+          <input type="number" id="thresh-fw-dsp" class="thresh-input" step="0.05" min="0.05" max="5.0" value="0.30">
+          <button class="action-btn primary" id="thresh-fw-save-btn" style="padding: 0 1rem; height: 38px;">Tune</button>
+        </div>
+      </div>
     </div>
     <div class="thresh-actions">
       <button class="action-btn primary" id="thresh-save-btn">Save Thresholds</button>
@@ -378,6 +393,7 @@
     <div class="panel-header">
       <div class="panel-title"><span class="panel-icon">&#9654;</span> Device Event Log</div>
       <div class="panel-controls">
+        <button class="ctrl-btn primary" id="request-logs-btn" style="background: var(--blue); color: white; border: none;">Fetch Device Status</button>
         <button class="ctrl-btn" id="export-devlog-csv-btn">↓ CSV</button>
         <button class="ctrl-btn" id="clear-devlog-btn">Clear</button>
       </div>

@@ -293,6 +293,33 @@ app.post('/api/device/reboot', requireAuth, (_req, res) => {
     res.json({ success: true });
 });
 
+// Set STM32 DSP Parameter
+app.post('/api/device/set-param', requireAuth, (req, res) => {
+    if (!stm32Socket || stm32Socket.destroyed) {
+        return res.status(503).json({ error: 'Device not connected' });
+    }
+    const { name, value } = req.body || {};
+    if (!name || value === undefined) return res.status(400).json({ error: 'Missing name or value' });
+
+    let cmd = '';
+    if (name === 'threshold') cmd = `PARAM:THR:${Number(value).toFixed(3)}\n`;
+    else return res.status(400).json({ error: 'Unsupported parameter' });
+
+    stm32Socket.write(cmd);
+    console.log(`[CMD] ${cmd.trim()} sent to device`);
+    res.json({ success: true });
+});
+
+// Request Device Logs/Status
+app.post('/api/device/request-logs', requireAuth, (_req, res) => {
+    if (!stm32Socket || stm32Socket.destroyed) {
+        return res.status(503).json({ error: 'Device not connected' });
+    }
+    stm32Socket.write('GET_LOGS\n');
+    console.log('[CMD] GET_LOGS command sent to device');
+    res.json({ success: true });
+});
+
 // Server + device status snapshot
 app.get('/api/status', requireAuth, (_req, res) => {
     res.json({
@@ -373,13 +400,16 @@ app.post('/api/thresholds', requireAuth, (req, res) => {
 
 // ─── CSV Export ────────────────────────────────────────────────
 app.get('/api/export/telemetry.csv', requireAuth, (_req, res) => {
-    const header = 'timestamp,ax,ay,az,temp,peak_hz,fault,cf,kurtosis\n';
+    const header = 'timestamp,ax,ay,az,temp,peak_hz,fault,cf,kurtosis,overflows,mx,my,mz,heading,press,alt\n';
     const rows = telemetryHistory.map(t =>
         [new Date(t.ts).toISOString(),
          (t.ax||0).toFixed(4), (t.ay||0).toFixed(4), (t.az||0).toFixed(4),
          (t.temp||0).toFixed(1), (t.freq||0).toFixed(1),
          t.fault||0,
-         (t.cf||0).toFixed(3), (t.kurt||0).toFixed(3)
+         (t.cf||0).toFixed(3), (t.kurt||0).toFixed(3),
+         t.overflows||0,
+         (t.mx||0).toFixed(1), (t.my||0).toFixed(1), (t.mz||0).toFixed(1),
+         (t.heading||0).toFixed(1), (t.press||0).toFixed(0), (t.alt||0).toFixed(1)
         ].join(',')
     ).join('\n');
     res.setHeader('Content-Type', 'text/csv');

@@ -1,0 +1,22 @@
+# STM32 Build Artifacts
+Debug/
+Release/
+*.o
+*.su
+*.cyclo
+*.elf
+*.bin
+*.hex
+*.map
+*.list
+*.d
+
+# Web Projects
+node_modules/
+.DS_Store
+*.log
+
+# Workspace specifics
+graphify-out/
+.settings/
+.cache/

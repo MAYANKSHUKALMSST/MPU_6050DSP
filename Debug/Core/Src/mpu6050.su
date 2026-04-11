@@ -2,6 +2,6 @@
 ../Core/Src/mpu6050.c:24:26:mpu_read	40	static
 ../Core/Src/mpu6050.c:49:9:MPU6050_WhoAmI	16	static
 ../Core/Src/mpu6050.c:57:19:MPU6050_Init	8	static
-../Core/Src/mpu6050.c:92:19:MPU6050_ReadAll	32	static
-../Core/Src/mpu6050.c:128:19:MPU6050_ReadAccel	16	static
-../Core/Src/mpu6050.c:150:19:MPU6050_ReadTemp	16	static
+../Core/Src/mpu6050.c:89:19:MPU6050_ReadAll	32	static
+../Core/Src/mpu6050.c:125:19:MPU6050_ReadAccel	16	static
+../Core/Src/mpu6050.c:147:19:MPU6050_ReadTemp	16	static

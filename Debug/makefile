@@ -72,7 +72,7 @@ main-build: MPU_6050DSP.elf secondary-outputs
 
 # Tool invocations
 MPU_6050DSP.elf MPU_6050DSP.map: $(OBJS) $(USER_OBJS) C:\Users\mayan\STM32CubeIDE\workspace_1.18.0\MPU_6050DSP\STM32F722ZETX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "MPU_6050DSP.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m7 -T"C:\Users\mayan\STM32CubeIDE\workspace_1.18.0\MPU_6050DSP\STM32F722ZETX_FLASH.ld" --specs=nosys.specs -Wl,-Map="MPU_6050DSP.map" -Wl,--gc-sections -static -L../Drivers/CMSIS/Lib/GCC -u _printf_float --specs=nano.specs -mfpu=fpv5-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+	arm-none-eabi-gcc -o "MPU_6050DSP.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m7 -T"C:\Users\mayan\STM32CubeIDE\workspace_1.18.0\MPU_6050DSP\STM32F722ZETX_FLASH.ld" --specs=nosys.specs -Wl,-Map="MPU_6050DSP.map" -Wl,--gc-sections -static -L../Drivers/CMSIS/Lib/GCC --specs=nano.specs -mfpu=fpv5-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 
